@@ -5,8 +5,6 @@
 
 ## 動作ページ
 * https://aisot.github.io/vci-print-viewer
-* https://aisot.org/vci/print-viewer
-
 
 ## 動作確認
 * [VirtualCast](https://store.steampowered.com/app/947890/VirtualCast/) 1.9.3b
