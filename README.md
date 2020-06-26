@@ -7,7 +7,7 @@
 * https://aisot.github.io/vci-print-viewer
 
 ## 動作確認
-* [VirtualCast](https://store.steampowered.com/app/947890/VirtualCast/) 1.9.3b
+* [VirtualCast](https://store.steampowered.com/app/947890/VirtualCast/) 1.9.3c
 * [Google Chrome](https://www.google.co.jp/chrome/) 83
 * (Firefoxでは動作しません)
 
