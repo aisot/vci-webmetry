@@ -1,33 +1,911 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 
 <head>
     <meta charset="UTF-8">
-    <title>VCIロガー WebSoket接続サンプル</title>
+    <title>vci-webmetry</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/msgpack5/4.2.0/msgpack5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/izitoast/1.4.0/js/iziToast.min.js"
+        crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/izitoast/1.4.0/css/iziToast.min.css"
+        crossorigin="anonymous">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css" />
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/components/accordion.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/components/accordion.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.24.0/min/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@2.8.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-streaming@1.8.0"></script>
 </head>
-<script>
-    window.onload = function () {
-        let body = document.body;
-        body.style.whiteSpace = 'pre';
-        const ws = new WebSocket('ws://localhost:8080');
-        ws.binaryType = 'arraybuffer';
-        ws.onerror = function (e) {
-            body.append("接続に失敗、再読み込みしてください");
-        }
-        ws.onopen = function (e) { body.innerHTML = "バーチャルキャストのWebSoketに接続<hr>" }
 
-        ws.onmessage = function (e) {
-            let d = msgpack5().decode(e.data)[2][0];
-            let message = d['Message'].replace("\n", "\\n");
-            let timeStr = new Date(d['UnixTime'] * 1000).toLocaleTimeString();
-            body.append(`${timeStr}\t|\t${d['Category']}\t|\t${d['Item']}\t|\t${message}\n`);
+<script>
+    //変数初期化
+    var Items = [];
+    var print_count = 0; // FPSチャート表示用
+    var States = [];
+    var print_section_id = 0;
+
+    //重いのでWebSoket_MessageとItem_Printはアコーディオンを開くまでfalseにしておく
+    States['WebSoket_Message'] = { active: false };
+    States['Item_Print'] = { active: false };
+
+    var Option = {};
+    $(function () {
+
+        ////ボタン動作の初期化
+        let setButton = function (section) {
+
+            $(`#${section}_Clear`).on('click', function () {
+                Logs.deleteAndClear(section);
+            });
+            $(`#${section}_Copy`).on('click', function () {
+                Logs.clipCopy(section);
+            });
+            $(`#${section}_Json`).on('click', function () {
+                Logs.downloadJson(section);
+            });
+            $(`#${section}_Lua`).on('click', function () {
+                Logs.downloadLua(section);
+            });
+
+            $(`#${section}_stop`).on('click', function () {
+                if (States[section].active == true) {
+                    States[section].active = false;
+                    playAndStopColorUpdate(section);
+                }
+            });
+
+            $(`#${section}_play`).on('click', function () {
+                if (States[section].active == false) {
+                    States[section].active = true;
+                    playAndStopColorUpdate(section);
+                }
+            });
+            playAndStopColorUpdate(section);
         }
-    }
+        //停止／再生ボタンの色を変更
+        let playAndStopColorUpdate = function (section) {
+            if (States[section].active) {
+                $(`#${section}_play`).css('color', 'green');
+                $(`#${section}_stop`).css('color', 'gray');
+            } else {
+                $(`#${section}_play`).css('color', 'gray');
+                $(`#${section}_stop`).css('color', 'red');
+            }
+        }
+        //テンプレートから各表示セクションをAppendする
+        let createSectionAppend = function (section, icon, append_area, title) {
+            if (!States[section]) {
+                States[section] = { active: true };
+            }
+            title = title || section;
+            let html = $('#segment_template').html();
+            html = html.replace(/\${section}/g, section).replace(/\${icon}/g, icon);
+            html = html.replace(/\${title}/g, title);
+
+            //個別VCIのprintの時だけアコーディオンが開いた状態で表示
+            if (section.match(/_print$/)) {
+                html = html.replace(/\${active}/g, "active ");
+            } else {
+                //アコーディオンが閉じた状態
+                html = html.replace(/\${active}/g, "");
+            }
+            $('#' + append_area).append(html);
+            //ボタンの動作をセットする
+            setButton(section);
+
+            let accordion_open = function () {
+                States[section].active = true;
+                playAndStopColorUpdate(section);
+                iziToast.success({ title: `${section} の記録を開始`, message: ``, position: 'bottomCenter' });
+            }
+            let accordion_close = function () {
+                States[section].active = false;
+                playAndStopColorUpdate(section);
+                iziToast.success({ title: `${section} の記録を停止`, message: ``, position: 'bottomCenter' });
+            }
+            switch (section) {
+                //アコーディオンがオープン時だけ記録する
+                case 'WebSoket_Message':
+                case 'Item_Print':
+                    $(`#${section}_segment`).accordion({ "onOpen": accordion_open, "onClose": accordion_close });
+                    break;
+                default:
+                    $(`#${section}_segment`).accordion({});
+            }
+        }
+
+        createSectionAppend('Item_State', 'share alternate square', 'segments');
+        createSectionAppend('SharedVariable', 'share alternate', 'segments');
+        createSectionAppend('Item_Print', 'cubes', 'segments');
+        createSectionAppend('WebSoket_Message', 'bullhorn', 'segments');
+        createSectionAppend('Item_Instance', 'boxes', 'segments');
+        createSectionAppend('System', 'globe', 'segments');
+
+        //不明なCategoryが来るまで非表示にしておく
+        createSectionAppend('Unknown_Category', 'exclamation triangle', 'segments');
+        $('#Unknown_Category_segment').hide();
+
+        States['Item_ScriptError'] = { active: true };
+        setButton('Item_ScriptError');
+
+        //System Status チャート作成
+        let delay = 5300;
+        let duration = delay * 50;
+
+        let chartColors = {
+            red: 'rgb(255, 99, 132)',
+            orange: 'rgb(255, 159, 64)',
+            yellow: 'rgb(255, 205, 86)',
+            green: 'rgb(75, 192, 192)',
+            blue: 'rgb(54, 162, 235)',
+            purple: 'rgb(153, 102, 255)',
+            grey: 'rgb(201, 203, 207)'
+        };
+        let color = Chart.helpers.color;
+
+        //Memoryチャート表示設定
+        let memory_config = {
+            type: 'line',
+            data: {
+                datasets: [{
+                    type: 'line',
+                    label: 'Used',
+                    fill: false,
+                    backgroundColor: color(chartColors.red).alpha(0.5).rgbString(),
+                    borderColor: chartColors.red,
+                    cubicInterpolationMode: 'monotone',
+                    data: []
+                }, {
+                    type: 'line',
+                    label: 'Reserved',
+                    fill: false,
+                    backgroundColor: color(chartColors.blue).alpha(0.5).rgbString(),
+                    borderColor: chartColors.blue,
+                    cubicInterpolationMode: 'monotone',
+                    data: []
+                },
+                ]
+            },
+            options: {
+                title: {
+                    display: false,
+                    text: 'Memory'
+                },
+                scales: {
+                    xAxes: [{
+                        type: 'realtime',
+                        realtime: {
+                            duration: duration,
+                            delay: delay,
+                        }
+                    }],
+                    yAxes: [{
+                        scaleLabel: {
+                            display: true,
+                            labelString: 'Memory(MB)'
+                        }
+                    }]
+                },
+                tooltips: {
+                    mode: 'nearest',
+                    intersect: false
+                },
+                hover: {
+                    mode: 'nearest',
+                    intersect: false
+                }
+            }
+        };
+
+        //FPSチャート表示設定
+        let fps_config = {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: 'FPS',
+                    type: 'line',
+                    fill: false,
+                    backgroundColor: color(chartColors.green).alpha(0.5).rgbString(),
+                    borderColor: chartColors.green,
+                    cubicInterpolationMode: 'monotone',
+                    data: []
+                },
+                {
+                    label: 'Item count',
+                    type: 'line',
+                    fill: false,
+                    backgroundColor: color(chartColors.orange).alpha(0.5).rgbString(),
+                    borderColor: chartColors.orange,
+                    borderWidth: 1,
+                    cubicInterpolationMode: 'monotone',
+                    data: []
+                },
+                {
+                    label: 'print count',
+                    type: 'line',
+                    fill: false,
+                    backgroundColor: color(chartColors.purple).alpha(0.5).rgbString(),
+                    borderColor: chartColors.purple,
+                    borderWidth: 1,
+                    cubicInterpolationMode: 'monotone',
+                    data: []
+                },
+                ]
+            },
+            options: {
+                title: {
+                    display: false,
+                    text: 'FPS'
+                },
+                scales: {
+                    xAxes: [{
+                        type: 'realtime',
+                        realtime: {
+                            duration: duration,
+                            delay: delay,
+                        }
+
+                    }],
+                    yAxes: [{
+                        scaleLabel: {
+                            display: false,
+                            labelString: 'FPS',
+                        }
+                    }]
+                },
+                tooltips: {
+                    mode: 'nearest',
+                    intersect: false
+                },
+                hover: {
+                    mode: 'nearest',
+                    intersect: false
+                }
+            }
+        };
+
+        let ctx1 = document.getElementById('MemoryChart').getContext('2d');
+        window.MemoryChart = new Chart(ctx1, memory_config);
+
+        let ctx2 = document.getElementById('FPSChart').getContext('2d');
+        window.FPSChart = new Chart(ctx2, fps_config);
+
+        //SystemStatusを受信した時に実行、チャートを更新する
+        let onSystemStatus = function (d, print_count) {
+
+            let Fps = /\[FPS\] (\d+)/.exec(d['Message'])[1];
+            let Used = /Used: (\d+)MB/.exec(d['Message'])[1];
+            let Reserved = /Reserved: (\d+)MB/.exec(d['Message'])[1];
+            let t = new Date(d['UnixTime'] * 1000);
+            let item = Object.keys(Items).length;
+
+            $('#fps').text(Fps);
+            $('#used_memory').text(Used);
+            $('#reserved_memory').text(Reserved);
+
+            //Memoryチャート更新
+            let memory_datasets = window.MemoryChart.config.data.datasets;
+            let chartUsed = memory_datasets[0];
+            let charReserved = memory_datasets[1];
+
+            chartUsed.data.push({ x: t, y: Used });
+            charReserved.data.push({ x: t, y: Reserved });
+            window.MemoryChart.update();
+
+            //Fpsチャート更新
+            let fps_datasets = window.FPSChart.config.data.datasets;
+
+            let chartFps = fps_datasets[0];
+            let chartFpsItem = fps_datasets[1];
+            let chartMessageCount = fps_datasets[2];
+
+            chartFps.data.push({ x: t, y: Fps });
+            chartFpsItem.data.push({ x: t, y: item });
+            chartMessageCount.data.push({ x: t, y: print_count });
+
+            window.FPSChart.update();
+        };
+
+        // fix main menu to page on passing
+        $('.main.menu').visibility({
+            type: 'fixed'
+        });
+        $('.overlay').visibility({
+            type: 'fixed',
+            offset: 60
+        });
+
+        // show dropdown on hover
+        $('.main.menu  .ui.dropdown').dropdown({
+            on: 'hover'
+        });
+
+        $('#menu_license').on('click', function () {
+            $('#license').modal('show');
+        });
+        $('#menu_options').on('click', function () {
+            $('#options').modal('show');
+        });
+
+        let uTimeToString = function (t) {
+            return new Date(t * 1000).toLocaleTimeString()
+        }
+
+        //メッセージ表示テーブルに挿入するHTMLを作る(時間、カテゴリ、アイテム名、メッセージ)
+        let createAppendHtmlMessage = function (d) {
+            let html = "";
+            let TimeStr = uTimeToString(d['UnixTime']);
+            let message = d['Message'].replace(/^"|"$/g, ""); //最初と最後の「"」を削除
+            html += `<tr>`
+            html += `<td class="center aligned" data-label="Time" style="width:6em">${TimeStr}</td>`
+            html += `<td class="center aligned" data-label="Category">${d['Category']}</td>`
+            html += `<td class="center aligned" data-label="Item">${d['Item']}</td>`
+            html += `<td class="left aligned" data-label="Message">${message}</td>`;
+            html += `</tr>`;
+            return html;
+        }
+        //メッセージ表示テーブルに挿入するHTMLを作る(時間、メッセージ)
+        let createAppendHtmlTimeAndMessage = function (d) {
+            let html = "";
+            let TimeStr = uTimeToString(d['UnixTime']);
+            let message = d['Message'].replace(/^"|"$/g, ""); //最初と最後の「"」を削除
+            html += `<tr>`
+            html += `<td class="center aligned" data-label="Time" style="width:6em">${TimeStr}</td>`
+            html += `<td class="left aligned" data-label="Message">${message}</td>`;
+            html += `</tr>`;
+            return html;
+        }
+
+        //クリップボードにコピーするタブ区切りテキストを作る
+        let createClipCopyTsvMessage = function (message_arr) {
+            let text = "";
+            for (const d of message_arr) {
+                let TimeStr = uTimeToString(d['UnixTime']);
+                let message = d['Message'].replace(/^"|"$/g, ""); //最初と最後の「"」を削除
+                message = message.replace(/\n|\n\r/g, "\\n"); //改行を「\n」に変換
+                text += `${TimeStr}\t${d['Category']}\t${d['Item']}\t${message}\n`;
+            }
+            return text;
+        }
+        //メッセージだけクリップボードにコピーする
+        let createClipCopyMessage = function (message_arr) {
+            let text = "";
+            for (const d of message_arr) {
+                let message = d['Message'].replace(/^"|"$/g, ""); //最初と最後の「"」を削除
+                message = message.replace(/\n|\n\r/g, "\\n"); //改行を「\n」に変換
+                text += `${message}\n`;
+            }
+            return text;
+        }
+
+        //このオブジェクトでログを記録したり加工したり表示したりする
+        let Logs = {};
+        Logs.data = [];
+        //メッセージログをセクション別に記録する
+        Logs.recode = function (d, section) {
+            section = section || 'default';
+            //alert(section);
+            this.data[section] = this.data[section] || [];
+            this.data[section].push(d);
+        }
+        //メッセージを表示してrecodeへ
+        Logs.recodeAndShow = function (d, section) {
+
+            let message = d['Message'];
+            if (!States[section].active) { return; }
+
+            let html = "";
+            switch (section) {
+                case 'Item_ScriptError':
+                    //発生したエラー内容によってパス区切りが"/"だったり"\"だったりするのでアイテム名でsplit
+                    message = message.split(`${d['Item']}`)[1].slice(1) || d['Message'];
+                    html = d['Item'] + '/' + message + "\n";
+                    iziToast.error({
+                        title: 'Script Error:', message: d['Item'] + '/' + message,
+                        position: 'topRight'
+                    });
+                    break;
+                case 'Item_Print':
+                    if (Option['Print_Toast']) { iziToast.show({ title: d['Item'], message: message }); }
+                case 'SharedVariable':
+                    html = createAppendHtmlTimeAndMessage(d);
+                    break;
+                default:
+                    //VCI個別のprintを表示する
+                    if (section.match(/_print$/)) {
+                        html = createAppendHtmlTimeAndMessage(d);
+                        section = Items[d['Item']] + '_print';
+                        //console.log(section);
+                    } else {
+                        html = createAppendHtmlMessage(d);
+                    }
+            }
+            $(`#${section}`).append(html);
+            $(`#${section}` + "_segment").show();
+            this.recode(d, section);
+
+            //スクロールを一番下に
+            let el = $(`#${section}` + '_scroll');
+            //console.log(section+"=="+el);
+            let scrollHeight = el.get(0).scrollHeight;
+            el.scrollTop(scrollHeight);
+        }
+        //メッセージログを削除する
+        Logs.delete = function (section) {
+            section = section || 'default';
+            this.data[section] = this.data[section] || [];
+            this.data[section].splice(0);
+        }
+        //メッセージをクリアしてdeleteへ
+        Logs.deleteAndClear = function (section) {
+            //$(`#${section}_segment`).hide();
+            $(`#${section}`).text("");
+            this.delete(section);
+        }
+
+        //メッセージログを返す
+        Logs.get = function (section) {
+            section = section || 'default';
+            return this.data[section];
+        }
+        Logs.clipCopy = function (section) {
+            section = section || 'default';
+            let text = "";
+            switch (section) {
+                case "Item_ScriptError":
+                    text = $(`#${section}`).text();
+                    break;
+                case "Item_Print":
+                case "SharedVariable":
+                    text = createClipCopyMessage(this.data[section]);
+                    break;
+                default:
+                    //個別VCIのprint内容をクリップボードにコピーする処理
+                    if (section.match(/_print$/)) {
+                        text = createClipCopyMessage(this.data[section]);
+                    } else {
+                        text = createClipCopyTsvMessage(this.data[section]);
+                    }
+            }
+            setClip(text);
+        }
+        Logs.downloadJson = function (section) {
+            DL.json(this.get(section), section);
+        }
+        Logs.downloadLua = function (section) {
+            DL.lua(this.get(section), 'data_module');
+        }
+        let itemMessageShow = function (name) {
+            $(name + "_segment").show();
+        }
+
+        //クリップボードにコピーする処理
+        let setClip = function (str) {
+            str = str.replace(/\n$/g, ""); //最後の改行を削除
+            if (str.length == 0) return false;
+            let clip = $('<textarea></textarea>');
+            clip.val(str);
+            $('body').append(clip);
+            clip.select();
+            let ret = document.execCommand('copy');
+            clip.remove();
+            if (ret) {
+                iziToast.success({
+                    title: 'クリップボードにコピーしました', message: ``,
+                    transitionIn: 'bounceInRight', position: 'topLeft',
+                });
+            }
+        }
+
+        let DL = {};
+        //dataをブラウザーへ送りダウンロードさせる
+        DL.export = function (data, filename, type) {
+            let bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            let blob = new Blob([bom, data], { type: `${type}` });
+            let a = document.createElement('a');
+            a.download = `${filename}`;
+            a.href = (window.URL || window.webkitURL).createObjectURL(blob);
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+        //CSVデータを作ってDL.exportへ
+        DL.csv = function (arr, name) {
+            let data = arr.map((arr) => arr.join(',')).join('\r\n');
+            this.export(data, `${name}.csv`, 'text/csv');
+        };
+        //JSONデータを生成してDL.exportへ
+        DL.json = function (arr, name) {
+            let data = JSON.stringify(arr);
+            data = data.replace(/},{/g, "},\n{");
+            this.export(data, `${name}.json`, 'text/json');
+        };
+        //Luaデータを生成してDL.exportへ
+        DL.lua = function (arr, name) {
+            let lua = "--[[\n";
+            lua += "-- VCI Name:" + arr[0]['Item'] + "\n";
+            lua += "-- example: main.lua --------\n";
+            lua += "local data = require \"data_module\"\n";
+            lua += "for num in pairs(data) do\n";
+            lua += "  print( data[num] )\n";
+            lua += "end\n-----------------------------]]\n\n";
+            lua += "local data = {\n";
+            for (let d of arr) {
+                let message = d['Message'].replace(/^"|"$/g, ""); //最初と最後の「"」を削除
+                message = message.replace(/"/g, '\\"');
+                message = message.replace(/\n/g, '\\n');
+                lua += `\t"${message}"\t,\n`;
+            }
+            lua = lua.replace(/,\n$/g, `\n}\n`);
+            lua += "\nreturn data\n"
+            this.export(lua, `${name}.lua`, 'text/lua');
+        };
+
+        //バーチャルキャストに接続して行う処理
+        let VCIWebSoket = function (PORT) {
+
+            //WebSoket 接続ポート
+            let wsPort = PORT || '8080';
+            let wsHost = "ws://localhost:" + wsPort;
+            let ws = new WebSocket(wsHost);
+
+            ws.binaryType = 'arraybuffer';
+            ws.onopen = function (e) {
+
+                $('#websoket_error').hide();
+                $('#about_segment').hide();
+                $('#main_content').show();
+
+                iziToast.success({
+                    title: 'バーチャルキャストへの接続に成功', message: `接続先 : ${wsHost}`,
+                    transitionIn: 'bounceInDown', position: 'topCenter',
+                });
+            };
+            ws.onerror = function (e) {
+                $('#websoket_error').show();
+                iziToast.error({
+                    title: 'バーチャルキャストへの接続に失敗', message: `接続先 : ${wsHost}`,
+                    transitionIn: 'bounceInDown', position: 'center',
+                });
+            }
+
+            //新しいアイテムを確認した時
+            let onItem_New = function (item) {
+                print_section_id = print_section_id + 1;
+                Items[item] = print_section_id;
+                let section_name = Items[item] + '_print';
+                createSectionAppend(section_name, 'cube', 'print_segments', item);
+            }
+            //アイテムの削除
+            let onItem_Destroy = function (item) {
+                let section_id = Items[item];
+                let section_name = section_id + '_print';
+                $('#' + section_name + '_segment').remove();
+                delete Items[item];
+            }
+
+            //バーチャルキャストから来たメッセージ
+            ws.onmessage = function (e) {
+                let data = msgpack5().decode(e.data);
+                let d = data[2][0];
+
+                //既存のアイテムかを確認
+                if (d['Item'] != undefined) {
+                    //アイテムの登録
+                    let name = d['Item'];
+                    if (!Items[name]) onItem_New(name);
+                }
+
+                Logs.recodeAndShow(d, 'WebSoket_Message');
+
+                switch (d['Category']) {
+
+                    case 'Item_Print':
+                        if (d['Message'].match(/\[reload\]/)) {
+                            $("#Item_ScriptError").text("");
+                            $("#Item_ScriptError_segment").hide();
+
+                            let message = d['Message'].split(/EmbeddedScriptWorkspace\/.+\//)[1] || d['Message'];
+                            iziToast.success({
+                                title: `更新`,
+                                message: `${d['Item']}/${message}`,
+                                position: 'topLeft', transitionIn: 'bounceInRight',
+                            });
+
+                            //_main.lua等がEmbeddedScriptWorkspaceに作られた時？
+                        } else if (d['Message'].match(/^write/)) {
+                            //扱いに困る。とりあえずSystemに放り込む
+                            Logs.recodeAndShow(d, 'System');
+                        } else {
+                            print_count = print_count + 1;
+                            //全てのVCIのprint文を表示するセクション
+                            Logs.recodeAndShow(d, (d['Category']));
+
+                            //VCIのprint文を個別に表示するセクション
+                            let item_id = Items[d['Item']];
+                            Logs.recodeAndShow(d, item_id + '_print');
+                        }
+                        break;
+                    case 'Item_ScriptError':
+                    case 'Item_State':
+                    case 'SharedVariable':
+                    case 'System':
+                        Logs.recodeAndShow(d, (d['Category']));
+                        break;
+                    case 'SystemStatus':
+                        onSystemStatus(d, print_count);
+                        print_count = 0;
+                        break;
+                    case 'Item_Destroy':
+                        //Items配列から該当アイテムを消す
+                        onItem_Destroy(d['Item']);
+                    case 'Item_New':
+                    case 'Item_State':
+                        Logs.recodeAndShow(d, 'Item_Instance');
+                        break;
+                    default:
+                        Logs.recodeAndShow(d, 'Unknown_Category');
+                }
+            }
+            return ws;
+        }
+        //バーチャルキャストに接続する
+        let ws = VCIWebSoket();
+
+        //TCP_PORT変更ボタンの動作
+        $('#TCP_PORT_Change').on('click', function () {
+            ws = VCIWebSoket($('#TCP_PORT').val());
+        });
+
+        //オプション機能
+        let optionChange = function () {
+            let sw = $(this).prop("checked");
+            let name = $(this)[0].name;
+            Option[name] = sw;
+            let onoff = (sw) ? 'オン' : 'オフ';
+            iziToast.show({ title: `${name} ${onoff}にしました`, message: ``, position: 'topCenter' });
+        }
+
+        //Print Toast
+        $(`input[name="Print_Toast"]`).change(optionChange);
+
+        //表示の初期化
+        $("#Item_ScriptError").text("");
+        $('#websoket_error').hide();
+        $('#about_segment').show();
+        $('#Item_ScriptError_segment').hide();
+        $('#main_content').hide();
+
+    });//jQuery ready
 </script>
 
-<body>バーチャルキャストのVCIスクリプト ロガーホスト TCPポートを8080に設定、
-スタジオに入った状態でこのページを表示させてください。
-※Google Chromeで動作確認、Firefox動作しない事を確認
+<body>
+    <div class="ui main container">
+        <div class="ui segment" id="about_segment">
+            <h4 class="ui header"><i class="chart area icon"></i>vci-webmetry</h4>
+            <div class="ui info message">
+                <p class="ui">
+                    ブラウザ上からVCIのプリント出力内容などを確認出来ます。<br>
+                    バーチャルキャストのWebSocketロガーホストのTCPポート番号を8080に設定してください。<br>
+                    スタジオ内に入室した状態で、このページを開くと表示されます。<br>
+                <div style="padding-top:0.5em">
+                    参考 : <a
+                        href="https://virtualcast.jp/wiki/doku.php?id=virtualcast:setting:vci:logger">VCIスクリプトのロガーをホストするTCPポート設定</a>
+                </div>
+                </p>
+            </div>
+
+            <div class="ui info message">
+
+                <h5 class="ui header">このHTMLファイルをダウンロードして使う事も出来ます</h5>
+                <br>
+                <div><a href="index.html" download="./index.html"><i class="download icon"></i>ダウンロード</a></div>
+                <br>
+                <h5 class="ui header">改造して再配布するのも自由です(MIT License)</h5>
+                <br>
+                <div><a href="https://github.com/aisot/vci-webmetry/"><i class="github icon"></i>GitHub</a></div>
+                <br>
+                Google Chromeで動作します<br>
+                Firefoxでは動かない事を確認しています<br>
+                動作保障は一切ありません<br>
+                バーチャルキャストやブラウザのバージョンアップにより動かなくなる可能性もあります<br>
+            </div>
+
+            <div id="websoket_error" class="ui error message">
+                <h5 class="ui header"><i class="bomb icon"></i>WebSoketの接続に失敗しました</h5>
+                <div class="ui segment">
+                    <div class="field">
+                        <h4 class="headr">バーチャルキャスト「詳細設定」 の「VCI」にある<br>
+                            「VCIスクリプトのロガーをホストするTCPポート番号」で設定した値を入れてください</h4>   
+                        
+                            <div class="ui labeled input">
+                                <div class="ui label">ws://localhost: </div>
+                                <input type="number" id="TCP_PORT"  placeholder="8080">
+                                <button id="TCP_PORT_Change" class="ui button">再接続</button>
+                            </div>
+                    </div>
+                </div>
+            </div>
+            <!--//about_segment -->
+        </div>
+
+        <!-- sys state chart -->
+        <div class="ui message" id="SystemStatus_segment">
+            <h5><i class="chart line icon"></i>System Status</h5>
+            <div class="ui two column stackable right aligned grid">
+                <div class="middle aligned row">
+                    <div class="column">
+                        <canvas id="MemoryChart"></canvas>
+                    </div>
+                    <div class="column">
+                        <canvas id="FPSChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ui main container">
+            <!-- ScriptError -->
+            <div id="Item_ScriptError_segment" class="ui segment">
+                <h5><i class="bug red icon"></i>Script Error</h5>
+                <div id="Item_ScriptError_scroll" class="ui error message scrolling"
+                    style="height:300px;overflow-y: auto;overflow-x : hidden;">
+                    <pre id="Item_ScriptError"></pre>
+                </div>
+
+                <div class="ui padded two column grid">
+                    <div class="left aligned row">
+                        <div class="left aligned column">
+                            <button id="Item_ScriptError_Clear"><i class="eraser icon"></i>Clear</button>
+                            <button id="Item_ScriptError_Copy"><i class="copy icon"></i>Copy</button>
+                            <button id="Item_ScriptError_Lua"><i class="download icon"></i>Lua</button>
+                            <button id="Item_ScriptError_Json"><i class="download icon"></i>Json(raw)</button>
+                        </div>
+                        <div class="right aligned column">
+                            <i id="Item_ScriptError_play" class="play icon" style="cursor: pointer"></i>
+                            <i id="Item_ScriptError_stop" class="stop icon" style="cursor: pointer"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="print_segments"></div>
+        </div><!-- main container-->
+
+        <!-- ////////// MENU //////////// -->
+        <div class="ui borderless main menu">
+            <div class="ui container">
+                <div class="ui header  item">
+                    <i class="compass outline icon"></i>System Status
+                </div>
+                <div class="ui header left  item"><span id="used_memory">000</span>MB　/　<span
+                        id="reserved_memory">000</span>MB　<span id="fps">00</span>fps</div>
+                <div class="ui right floated dropdown item">
+                    <i class="help icon"></i>Help<i class="dropdown icon"></i>
+                    <div class="menu">
+                        <div class="item"><i class="github icon"></i><a
+                                href="https://github.com/aisot/vci-webmetry/">Source</a>
+                        </div>
+                        <div class="item"><i class="download icon"></i><a href="index.html"
+                                download="./index.html">Download</a></div>
+                        <div id="menu_options" class="item"><i class="cog icon"></i><a href="#">Option</a></div>
+                        <div id="menu_license" class="item"><i class="sticky note icon"></i><a href="#">License</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ui main container">
+            <div id="segments"></div>
+        </div><!-- main container-->
+
+        <div style="height:100px"></div>
+
+        <!-- ////////// ここからテンプレート ////////// -->
+        <template id="segment_template">
+            <div id="${section}_segment" class="ui accordion">
+                <div class="${active} title header">
+                    <h4><i class="dropdown icon"></i><i class="${icon} icon"></i>${title}</h4>
+                </div>
+                <div class="${active} content">
+                    <div class="ui table">
+                        <div id="${section}_scroll" style="height:300px;overflow-y: auto;overflow-x : hidden;">
+                            <table class="ui padded striped very compact table">
+                                <tbody id="${section}"></tbody>
+                            </table>
+                        </div>
+                        <div class="ui padded two column grid">
+                            <div class="left aligned row">
+                                <div class="left aligned column">
+                                    <button id="${section}_Clear"><i class="eraser icon"></i>Clear</button>
+                                    <button id="${section}_Copy"><i class="copy icon"></i>Copy</button>
+                                    <button id="${section}_Lua"><i class="download icon"></i>Lua</button>
+                                    <button id="${section}_Json"><i class="download icon"></i>Json(raw)</button>
+                                </div>
+                                <div class="right aligned column">
+                                    <i id="${section}_play" class="play icon" style="cursor: pointer"></i>
+                                    <i id="${section}_stop" class="stop icon" style="cursor: pointer"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+        <!-- ////////// ここからモーダルウィンドウ//////////　-->
+
+        <!-- Options　-->
+        <div class="ui modal" id="options">
+            <div class="header">Option</div>
+            <div class="content">
+                <div class="ui message">
+                    <div class="field">
+                        <div class="ui checkbox">
+                            <input type="checkbox" name="Print_Toast">
+                            <label>Print Toast</label>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="actions">
+                <div class="ui approve button">OK</div>
+            </div>
+        </div>
+
+        <!-- License　-->
+        <div class="ui modal" id="license">
+            <div class="header">License</div>
+            <div class="content">
+                <div class="ui message">
+                    <div class="ui header">vci-webmetry</div><br>
+
+                    MIT License<br><br>
+
+                    Copyright (c) 2020 aiost<br><br>
+
+                    Permission is hereby granted, free of charge, to any person obtaining a copy
+                    of this software and associated documentation files (the "Software"), to deal
+                    in the Software without restriction, including without limitation the rights
+                    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+                    copies of the Software, and to permit persons to whom the Software is
+                    furnished to do so, subject to the following conditions:<br><br>
+
+                    The above copyright notice and this permission notice shall be included in all
+                    copies or substantial portions of the Software.<br><br>
+
+                    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+                    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+                    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+                    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+                    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+                    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+                    SOFTWARE.
+                </div>
+            </div>
+
+            <div class="header">Libraries</div>
+            <div class="content">
+                <div class="ui message">
+                    <ul>
+                        <li><a href="https://github.com/mcollina/msgpack5">msgpack5</a></li>
+                        <li><a href="https://jquery.com/">jQuery</a></li>
+                        <li><a href="https://semantic-ui.com/">Semantic UI</a></li>
+                        <li><a href="https://izitoast.marcelodolza.com/">izitoast</a></li>
+                        <li><a href="https://momentjs.com/">moment</a></li>
+                        <li><a href="https://www.chartjs.org/">Chart.js</a></li>
+                        <li><a href="https://nagix.github.io/chartjs-plugin-streaming/">chartjs-plugin-streaming</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="actions">
+                <div class="ui approve button">OK</div>
+            </div>
+        </div>
 </body>
+
 </html>
