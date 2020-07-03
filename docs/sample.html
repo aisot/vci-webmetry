@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>VCIロガー WebSoket接続サンプル</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/msgpack5/4.2.0/msgpack5.min.js"></script>
+</head>
+<script>
+    window.onload = function () {
+        let body = document.body;
+        body.style.whiteSpace = 'pre';
+        const ws = new WebSocket('ws://localhost:8080');
+        ws.binaryType = 'arraybuffer';
+        ws.onerror = function (e) {
+            body.append("接続に失敗、再読み込みしてください");
+        }
+        ws.onopen = function (e) { body.innerHTML = "バーチャルキャストのWebSoketに接続<hr>" }
+
+        ws.onmessage = function (e) {
+            let d = msgpack5().decode(e.data)[2][0];
+            let message = d['Message'].replace("\n", "\\n");
+            let timeStr = new Date(d['UnixTime'] * 1000).toLocaleTimeString();
+            body.append(`${timeStr}\t|\t${d['Category']}\t|\t${d['Item']}\t|\t${message}\n`);
+        }
+    }
+</script>
+
+<body>バーチャルキャストのVCIスクリプト ロガーホスト TCPポートを8080に設定、
+スタジオに入った状態でこのページを表示させてください。
+※Google Chromeで動作確認、Firefox動作しない事を確認
+</body>
+</html>
