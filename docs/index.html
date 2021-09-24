@@ -128,8 +128,8 @@
         createSectionAppend('Unknown_Category', 'exclamation triangle', 'segments');
         $('#Unknown_Category_segment').hide();
 
-        States['Item_ScriptError'] = { active: true };
-        setButton('Item_ScriptError');
+        States['Item_ScriptAbort'] = { active: true };
+        setButton('Item_ScriptAbort');
 
         //System Status チャート作成
         let delay = 5300;
@@ -399,7 +399,7 @@
 
             let html = "";
             switch (section) {
-                case 'Item_ScriptError':
+                case 'Item_ScriptAbort':
                     //発生したエラー内容によってパス区切りが"/"だったり"\"だったりするのでアイテム名でsplit
                     message = message.split(`${d['Item']}`)[1].slice(1) || d['Message'];
                     html = d['Item'] + '/' + message + "\n";
@@ -455,7 +455,7 @@
             section = section || 'default';
             let text = "";
             switch (section) {
-                case "Item_ScriptError":
+                case "Item_ScriptAbort":
                     text = $(`#${section}`).text();
                     break;
                 case "Item_Print":
@@ -605,8 +605,8 @@
 
                     case 'Item_Print':
                         if (d['Message'].match(/\[reload\]/)) {
-                            $("#Item_ScriptError").text("");
-                            $("#Item_ScriptError_segment").hide();
+                            $("#Item_ScriptAbort").text("");
+                            $("#Item_ScriptAbort_segment").hide();
 
                             let message = d['Message'].split(/EmbeddedScriptWorkspace\/.+\//)[1] || d['Message'];
                             iziToast.success({
@@ -629,7 +629,7 @@
                             Logs.recodeAndShow(d, item_id + '_print');
                         }
                         break;
-                    case 'Item_ScriptError':
+                    case 'Item_ScriptAbort':
                     case 'Item_State':
                     case 'SharedVariable':
                     case 'System':
@@ -673,10 +673,10 @@
         $(`input[name="Print_Toast"]`).change(optionChange);
 
         //表示の初期化
-        $("#Item_ScriptError").text("");
+        $("#Item_ScriptAbort").text("");
         $('#websoket_error').hide();
         $('#about_segment').show();
-        $('#Item_ScriptError_segment').hide();
+        $('#Item_ScriptAbort_segment').hide();
         $('#main_content').hide();
 
     });//jQuery ready
@@ -749,24 +749,24 @@
 
         <div class="ui main container">
             <!-- ScriptError -->
-            <div id="Item_ScriptError_segment" class="ui segment">
+            <div id="Item_ScriptAbort_segment" class="ui segment">
                 <h5><i class="bug red icon"></i>Script Error</h5>
-                <div id="Item_ScriptError_scroll" class="ui error message scrolling"
+                <div id="Item_ScriptAbort_scroll" class="ui error message scrolling"
                     style="height:300px;overflow-y: auto;overflow-x : hidden;">
-                    <pre id="Item_ScriptError"></pre>
+                    <pre id="Item_ScriptAbort"></pre>
                 </div>
 
                 <div class="ui padded two column grid">
                     <div class="left aligned row">
                         <div class="left aligned column">
-                            <button id="Item_ScriptError_Clear"><i class="eraser icon"></i>Clear</button>
-                            <button id="Item_ScriptError_Copy"><i class="copy icon"></i>Copy</button>
-                            <button id="Item_ScriptError_Lua"><i class="download icon"></i>Lua</button>
-                            <button id="Item_ScriptError_Json"><i class="download icon"></i>Json(raw)</button>
+                            <button id="Item_ScriptAbort_Clear"><i class="eraser icon"></i>Clear</button>
+                            <button id="Item_ScriptAbort_Copy"><i class="copy icon"></i>Copy</button>
+                            <button id="Item_ScriptAbort_Lua"><i class="download icon"></i>Lua</button>
+                            <button id="Item_ScriptAbort_Json"><i class="download icon"></i>Json(raw)</button>
                         </div>
                         <div class="right aligned column">
-                            <i id="Item_ScriptError_play" class="play icon" style="cursor: pointer"></i>
-                            <i id="Item_ScriptError_stop" class="stop icon" style="cursor: pointer"></i>
+                            <i id="Item_ScriptAbort_play" class="play icon" style="cursor: pointer"></i>
+                            <i id="Item_ScriptAbort_stop" class="stop icon" style="cursor: pointer"></i>
                         </div>
                     </div>
                 </div>
