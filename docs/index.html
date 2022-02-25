@@ -400,11 +400,23 @@
             let html = "";
             switch (section) {
                 case 'Item_ScriptAbort':
+                let summary;
+                if ( message.search(/EmbeddedScriptWorkspace/) !== -1) {
                     //発生したエラー内容によってパス区切りが"/"だったり"\"だったりするのでアイテム名でsplit
-                    message = message.split(`${d['Item']}`)[1].slice(1) || d['Message'];
-                    html = d['Item'] + '/' + message + "\n";
+                    summary = message.split(`${d['Item']}`)[1].slice(1) || d['Message'];
+                    message = ""
+                }else if(message.search(/module/) !== -1){
+                    //module .+ not found
+                    summary = message.match(/module.+found/);                    
+                }else if(message.search(/Interpreter/) !== -1){
+                    summary = message.match(/Interpreter.+/)
+                }
+                    html = '<h5 class="ui">'+`${d['Item']}`+"<br>"+summary+'</h5>';
+                    if (message){
+                        html += '<div style="overflow: auto;">'+d['Item'] + '/' + message + "\n"+"</div>";
+                    }
                     iziToast.error({
-                        title: 'Script Error:', message: d['Item'] + '/' + message,
+                        title: 'Script Error:', message: d['Item'] + '/' + summary,
                         position: 'topRight'
                     });
                     break;
