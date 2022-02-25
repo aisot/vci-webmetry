@@ -7,8 +7,8 @@
 * https://aisot.github.io/vci-webmetry
 
 ## 動作確認
-* [VirtualCast](https://store.steampowered.com/app/947890/VirtualCast/) 2.1.2a
-* [Google Chrome](https://www.google.co.jp/chrome/) 93
+* [VirtualCast](https://store.steampowered.com/app/947890/VirtualCast/) 2.2.0c
+* [Google Chrome](https://www.google.co.jp/chrome/) 98
 * (Firefoxでは動作しません)
 
 ## ライセンス
