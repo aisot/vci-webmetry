@@ -131,6 +131,9 @@
         States['Item_ScriptAbort'] = { active: true };
         setButton('Item_ScriptAbort');
 
+        States['Item_ScriptError'] = { active: true };
+        setButton('Item_ScriptError');
+        
         //System Status チャート作成
         let delay = 5300;
         let duration = delay * 50;
@@ -399,6 +402,7 @@
 
             let html = "";
             switch (section) {
+                case 'Item_ScriptError':
                 case 'Item_ScriptAbort':
                 let summary;
                 if ( message.search(/EmbeddedScriptWorkspace/) !== -1) {
@@ -642,6 +646,7 @@
                         }
                         break;
                     case 'Item_ScriptAbort':
+                    case 'Item_ScriptError':
                     case 'Item_State':
                     case 'SharedVariable':
                     case 'System':
@@ -686,9 +691,11 @@
 
         //表示の初期化
         $("#Item_ScriptAbort").text("");
+        $("#Item_ScriptError").text("");
         $('#websoket_error').hide();
         $('#about_segment').show();
         $('#Item_ScriptAbort_segment').hide();
+        $('#Item_ScriptError_segment').hide();
         $('#main_content').hide();
 
     });//jQuery ready
@@ -760,9 +767,9 @@
         </div>
 
         <div class="ui main container">
-            <!-- ScriptError -->
+            <!-- Item_ScriptAbort -->
             <div id="Item_ScriptAbort_segment" class="ui segment">
-                <h5><i class="bug red icon"></i>Script Error</h5>
+                <h5><i class="bug red icon"></i>Item_ScriptAbort</h5>
                 <div id="Item_ScriptAbort_scroll" class="ui error message scrolling"
                     style="height:300px;overflow-y: auto;overflow-x : hidden;">
                     <pre id="Item_ScriptAbort"></pre>
@@ -779,6 +786,28 @@
                         <div class="right aligned column">
                             <i id="Item_ScriptAbort_play" class="play icon" style="cursor: pointer"></i>
                             <i id="Item_ScriptAbort_stop" class="stop icon" style="cursor: pointer"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Item_ScriptError -->
+            <div id="Item_ScriptError_segment" class="ui segment">
+                <h5><i class="bug red icon"></i>Item_ScriptError</h5>
+                <div id="Item_ScriptError_scroll" class="ui error message scrolling" style="height:300px;overflow-y: auto;overflow-x : hidden;">
+                    <pre id="Item_ScriptError"></pre>
+                </div>
+                <div class="ui padded two column grid">
+                    <div class="left aligned row">
+                        <div class="left aligned column">
+                            <button id="Item_ScriptError_Clear"><i class="eraser icon"></i>Clear</button>
+                            <button id="Item_ScriptError_Copy"><i class="copy icon"></i>Copy</button>
+                            <button id="Item_ScriptError_Lua"><i class="download icon"></i>Lua</button>
+                            <button id="Item_ScriptError_Json"><i class="download icon"></i>Json(raw)</button>
+                        </div>
+                        <div class="right aligned column">
+                            <i id="Item_ScriptError_play" class="play icon" style="cursor: pointer"></i>
+                            <i id="Item_ScriptError_stop" class="stop icon" style="cursor: pointer"></i>
                         </div>
                     </div>
                 </div>
